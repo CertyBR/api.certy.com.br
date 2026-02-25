@@ -8,6 +8,8 @@ pub struct AppConfig {
     pub bind_addr: String,
     pub database_url: String,
     pub proxy_shared_token: Option<String>,
+    pub email_validation_api_url: String,
+    pub email_validation_timeout: Duration,
     pub acme_directory_url: String,
     pub session_ttl: Duration,
     pub poll_timeout: Duration,
@@ -37,6 +39,17 @@ impl AppConfig {
                 .ok()
                 .map(|raw| raw.trim().to_owned())
                 .filter(|raw| !raw.is_empty()),
+            email_validation_api_url: env::var("EMAIL_VALIDATION_API_URL")
+                .ok()
+                .map(|raw| raw.trim().to_owned())
+                .filter(|raw| !raw.is_empty())
+                .unwrap_or_else(|| {
+                    "https://api.likn.dev/v1/public/email-validation/validate".to_owned()
+                }),
+            email_validation_timeout: Duration::from_millis(env_u64(
+                "EMAIL_VALIDATION_TIMEOUT_MS",
+                4500,
+            )),
             acme_directory_url,
             session_ttl: Duration::from_secs(env_u64("SESSION_TTL_MINUTES", 60) * 60),
             poll_timeout: Duration::from_secs(env_u64("ACME_POLL_TIMEOUT_SECONDS", 120)),

@@ -18,6 +18,8 @@ pub enum AppError {
     Conflict(String),
     #[error("erro ACME: {0}")]
     Acme(String),
+    #[error("erro de serviço externo: {0}")]
+    Upstream(String),
     #[error("erro de persistência: {0}")]
     Storage(String),
 }
@@ -43,6 +45,10 @@ impl AppError {
         Self::Acme(message.into())
     }
 
+    pub fn upstream(message: impl Into<String>) -> Self {
+        Self::Upstream(message.into())
+    }
+
     pub fn storage(message: impl Into<String>) -> Self {
         Self::Storage(message.into())
     }
@@ -56,6 +62,7 @@ impl IntoResponse for AppError {
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::Acme(_) => StatusCode::BAD_GATEWAY,
+            AppError::Upstream(_) => StatusCode::BAD_GATEWAY,
             AppError::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
 

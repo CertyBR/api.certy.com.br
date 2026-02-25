@@ -19,6 +19,8 @@ As migrations rodam automaticamente na inicialização.
   - `action`
   - `details`
   - `created_at`
+- O e-mail é validado via API externa da Likn (`/v1/public/email-validation/validate`) no backend
+  antes de iniciar uma sessão.
 
 ## Opção 1: Backend local + DB em Docker
 
@@ -54,6 +56,8 @@ PROXY_SHARED_TOKEN=seu-token docker compose up --build -d
 BACKEND_BIND_ADDR=0.0.0.0:8080
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/certy
 PROXY_SHARED_TOKEN=
+EMAIL_VALIDATION_API_URL=https://api.likn.dev/v1/public/email-validation/validate
+EMAIL_VALIDATION_TIMEOUT_MS=4500
 ACME_USE_STAGING=false
 SESSION_TTL_MINUTES=60
 ACME_POLL_TIMEOUT_SECONDS=120

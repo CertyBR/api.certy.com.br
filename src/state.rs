@@ -1,10 +1,12 @@
 use crate::config::AppConfig;
 use crate::repositories::session_repository::{RepositoryError, SessionRepository};
 use crate::services::acme::AcmeService;
+use crate::services::email_validation::EmailValidationService;
 
 pub struct AppState {
     pub config: AppConfig,
     pub acme_service: AcmeService,
+    pub email_validation_service: EmailValidationService,
     pub sessions: SessionRepository,
 }
 
@@ -14,6 +16,7 @@ impl AppState {
 
         Ok(Self {
             acme_service: AcmeService::new(config.clone()),
+            email_validation_service: EmailValidationService::new(&config),
             config,
             sessions,
         })

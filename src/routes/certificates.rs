@@ -13,6 +13,7 @@ use crate::models::{
     SessionAuditEvent, SessionEventAction, SessionResponse, SessionStatus,
 };
 use crate::services::acme::FinalizeOutcome;
+use crate::services::email_validation::EmailValidationError;
 use crate::session_id::{generate_session_id, validate_session_id};
 use crate::state::AppState;
 use crate::validation::{normalize_domain, validate_email};
@@ -38,6 +39,11 @@ async fn create_session(
 
     let domain = normalize_domain(&payload.domain)?;
     let email = validate_email(&payload.email)?;
+    state
+        .email_validation_service
+        .validate_email(&email)
+        .await
+        .map_err(map_email_validation_error)?;
     let bootstrap = state
         .acme_service
         .create_order(&domain, &email)
@@ -335,5 +341,12 @@ async fn log_event_best_effort(state: &Arc<AppState>, event: SessionAuditEvent) 
             error = %err,
             "falha ao gravar evento de auditoria da sessão"
         );
+    }
+}
+
+fn map_email_validation_error(err: EmailValidationError) -> AppError {
+    match err {
+        EmailValidationError::Invalid(message) => AppError::validation(message),
+        EmailValidationError::Upstream(message) => AppError::upstream(message),
     }
 }
