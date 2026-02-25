@@ -55,12 +55,16 @@ impl SessionRepository {
                 account_credentials_json,
                 order_url,
                 last_error,
+                email_verification_code_hash,
+                email_verification_expires_at,
+                email_verification_attempts,
+                email_verified_at,
                 created_at,
                 updated_at,
                 expires_at
             )
             VALUES (
-                $1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11
+                $1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
             )
             "#,
         )
@@ -72,6 +76,14 @@ impl SessionRepository {
         .bind(&session.account_credentials_json)
         .bind(&session.order_url)
         .bind(&session.last_error)
+        .bind(&session.email_verification_code_hash)
+        .bind(
+            session
+                .email_verification_expires_at
+                .map(DateTime::<Utc>::from),
+        )
+        .bind(session.email_verification_attempts)
+        .bind(session.email_verified_at.map(DateTime::<Utc>::from))
         .bind(DateTime::<Utc>::from(session.created_at))
         .bind(DateTime::<Utc>::from(session.updated_at))
         .bind(DateTime::<Utc>::from(session.expires_at))
@@ -93,6 +105,10 @@ impl SessionRepository {
                 account_credentials_json,
                 order_url,
                 last_error,
+                email_verification_code_hash,
+                email_verification_expires_at,
+                email_verification_attempts,
+                email_verified_at,
                 created_at,
                 updated_at,
                 expires_at
@@ -121,8 +137,12 @@ impl SessionRepository {
                 account_credentials_json = $4,
                 order_url = $5,
                 last_error = $6,
-                updated_at = $7,
-                expires_at = $8
+                email_verification_code_hash = $7,
+                email_verification_expires_at = $8,
+                email_verification_attempts = $9,
+                email_verified_at = $10,
+                updated_at = $11,
+                expires_at = $12
             WHERE id = $1
             "#,
         )
@@ -132,6 +152,14 @@ impl SessionRepository {
         .bind(&session.account_credentials_json)
         .bind(&session.order_url)
         .bind(&session.last_error)
+        .bind(&session.email_verification_code_hash)
+        .bind(
+            session
+                .email_verification_expires_at
+                .map(DateTime::<Utc>::from),
+        )
+        .bind(session.email_verification_attempts)
+        .bind(session.email_verified_at.map(DateTime::<Utc>::from))
         .bind(DateTime::<Utc>::from(session.updated_at))
         .bind(DateTime::<Utc>::from(session.expires_at))
         .execute(&self.pool)
@@ -186,6 +214,10 @@ struct SessionRow {
     account_credentials_json: String,
     order_url: String,
     last_error: Option<String>,
+    email_verification_code_hash: Option<String>,
+    email_verification_expires_at: Option<DateTime<Utc>>,
+    email_verification_attempts: i32,
+    email_verified_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     expires_at: DateTime<Utc>,
@@ -216,6 +248,10 @@ impl TryFrom<SessionRow> for CertificateSession {
             account_credentials_json: row.account_credentials_json,
             order_url: row.order_url,
             last_error: row.last_error,
+            email_verification_code_hash: row.email_verification_code_hash,
+            email_verification_expires_at: row.email_verification_expires_at.map(Into::into),
+            email_verification_attempts: row.email_verification_attempts,
+            email_verified_at: row.email_verified_at.map(Into::into),
             created_at: row.created_at.into(),
             updated_at: row.updated_at.into(),
             expires_at: row.expires_at.into(),

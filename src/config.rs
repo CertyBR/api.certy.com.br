@@ -10,6 +10,18 @@ pub struct AppConfig {
     pub proxy_shared_token: Option<String>,
     pub email_validation_api_url: String,
     pub email_validation_timeout: Duration,
+    pub email_verification_code_ttl: Duration,
+    pub email_verification_max_attempts: u32,
+    pub email_verification_secret: String,
+    pub smtp_host: Option<String>,
+    pub smtp_port: u16,
+    pub smtp_username: Option<String>,
+    pub smtp_password: Option<String>,
+    pub smtp_from_email: Option<String>,
+    pub smtp_from_name: String,
+    pub smtp_starttls: bool,
+    pub dns_check_resolver_url: String,
+    pub dns_check_timeout: Duration,
     pub acme_directory_url: String,
     pub session_ttl: Duration,
     pub poll_timeout: Duration,
@@ -50,6 +62,44 @@ impl AppConfig {
                 "EMAIL_VALIDATION_TIMEOUT_MS",
                 4500,
             )),
+            email_verification_code_ttl: Duration::from_secs(
+                env_u64("EMAIL_VERIFICATION_CODE_TTL_MINUTES", 10) * 60,
+            ),
+            email_verification_max_attempts: env_u64("EMAIL_VERIFICATION_MAX_ATTEMPTS", 5) as u32,
+            email_verification_secret: env::var("EMAIL_VERIFICATION_SECRET")
+                .ok()
+                .map(|raw| raw.trim().to_owned())
+                .filter(|raw| !raw.is_empty())
+                .unwrap_or_else(|| "certy-dev-secret-change-me".to_owned()),
+            smtp_host: env::var("SMTP_HOST")
+                .ok()
+                .map(|raw| raw.trim().to_owned())
+                .filter(|raw| !raw.is_empty()),
+            smtp_port: env_u16("SMTP_PORT", 587),
+            smtp_username: env::var("SMTP_USERNAME")
+                .ok()
+                .map(|raw| raw.trim().to_owned())
+                .filter(|raw| !raw.is_empty()),
+            smtp_password: env::var("SMTP_PASSWORD")
+                .ok()
+                .map(|raw| raw.trim().to_owned())
+                .filter(|raw| !raw.is_empty()),
+            smtp_from_email: env::var("SMTP_FROM_EMAIL")
+                .ok()
+                .map(|raw| raw.trim().to_owned())
+                .filter(|raw| !raw.is_empty()),
+            smtp_from_name: env::var("SMTP_FROM_NAME")
+                .ok()
+                .map(|raw| raw.trim().to_owned())
+                .filter(|raw| !raw.is_empty())
+                .unwrap_or_else(|| "Certy".to_owned()),
+            smtp_starttls: env_bool("SMTP_STARTTLS", true),
+            dns_check_resolver_url: env::var("DNS_CHECK_RESOLVER_URL")
+                .ok()
+                .map(|raw| raw.trim().to_owned())
+                .filter(|raw| !raw.is_empty())
+                .unwrap_or_else(|| "https://dns.google/resolve".to_owned()),
+            dns_check_timeout: Duration::from_millis(env_u64("DNS_CHECK_TIMEOUT_MS", 4500)),
             acme_directory_url,
             session_ttl: Duration::from_secs(env_u64("SESSION_TTL_MINUTES", 60) * 60),
             poll_timeout: Duration::from_secs(env_u64("ACME_POLL_TIMEOUT_SECONDS", 120)),
@@ -63,6 +113,13 @@ fn env_u64(key: &str, default: u64) -> u64 {
     env::var(key)
         .ok()
         .and_then(|raw| raw.parse::<u64>().ok())
+        .unwrap_or(default)
+}
+
+fn env_u16(key: &str, default: u16) -> u16 {
+    env::var(key)
+        .ok()
+        .and_then(|raw| raw.parse::<u16>().ok())
         .unwrap_or(default)
 }
 

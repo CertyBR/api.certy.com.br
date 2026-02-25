@@ -21,6 +21,9 @@ As migrations rodam automaticamente na inicialização.
   - `created_at`
 - O e-mail é validado via API externa da Likn (`/v1/public/email-validation/validate`) no backend
   antes de iniciar uma sessão.
+- Após a criação da sessão, o backend envia um código de verificação para o e-mail informado.
+- A emissão só continua após validar esse código.
+- Antes de chamar a CA, o backend faz pré-checagem DNS dos registros TXT esperados.
 
 ## Opção 1: Backend local + DB em Docker
 
@@ -69,6 +72,18 @@ PROXY_SHARED_TOKEN=
 POSTGRES_DATA_DIR=./data/postgres
 EMAIL_VALIDATION_API_URL=https://api.likn.dev/v1/public/email-validation/validate
 EMAIL_VALIDATION_TIMEOUT_MS=4500
+EMAIL_VERIFICATION_CODE_TTL_MINUTES=10
+EMAIL_VERIFICATION_MAX_ATTEMPTS=5
+EMAIL_VERIFICATION_SECRET=change-me-in-production
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_FROM_EMAIL=
+SMTP_FROM_NAME=Certy
+SMTP_STARTTLS=true
+DNS_CHECK_RESOLVER_URL=https://dns.google/resolve
+DNS_CHECK_TIMEOUT_MS=4500
 ACME_USE_STAGING=false
 SESSION_TTL_MINUTES=60
 ACME_POLL_TIMEOUT_SECONDS=120
@@ -86,6 +101,9 @@ Se `PROXY_SHARED_TOKEN` for preenchido, o backend exige:
 - `GET /health`
 - `POST /api/v1/certificates/sessions`
 - `GET /api/v1/certificates/sessions/{session_id}`
+- `POST /api/v1/certificates/sessions/{session_id}/verification-code`
+- `POST /api/v1/certificates/sessions/{session_id}/verify-email`
+- `POST /api/v1/certificates/sessions/{session_id}/dns-check`
 - `POST /api/v1/certificates/sessions/{session_id}/finalize`
 
 `session_id` é um token longo aleatório (base64url), não um UUID.
@@ -93,11 +111,14 @@ Se `PROXY_SHARED_TOKEN` for preenchido, o backend exige:
 ## Fluxo
 
 1. `POST /sessions` com `domain` e `email`.
-2. API devolve o(s) registro(s) TXT `_acme-challenge`.
-3. Você cria os registros no DNS.
-4. Chama `POST /finalize`.
-5. Quando validado, `POST /finalize` retorna `certificate_pem` e `private_key_pem` uma única vez.
-6. A sessão é invalidada imediatamente após a emissão.
+2. Backend envia código de verificação para o e-mail informado.
+3. `POST /sessions/{session_id}/verify-email` com o código.
+4. API devolve o(s) registro(s) TXT `_acme-challenge`.
+5. Você cria os registros no DNS.
+6. `POST /sessions/{session_id}/dns-check` para pré-checagem DNS no backend.
+7. `POST /sessions/{session_id}/finalize` somente após DNS pronto.
+8. Quando validado, `POST /finalize` retorna `certificate_pem` e `private_key_pem` uma única vez.
+9. A sessão é invalidada imediatamente após a emissão.
 
 ## Exemplo de criação de sessão
 
@@ -111,4 +132,12 @@ curl -X POST http://localhost:8080/api/v1/certificates/sessions \
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/certificates/sessions/<SESSION_ID>/finalize
+```
+
+## Exemplo de verificação de e-mail
+
+```bash
+curl -X POST http://localhost:8080/api/v1/certificates/sessions/<SESSION_ID>/verify-email \
+  -H "Content-Type: application/json" \
+  -d '{"code":"123456"}'
 ```
