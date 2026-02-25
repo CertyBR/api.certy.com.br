@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: certy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: certy
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - certy_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d certy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: certy-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      BACKEND_BIND_ADDR: 0.0.0.0:8080
+      DATABASE_URL: postgres://postgres:postgres@db:5432/certy
+      ACME_USE_STAGING: "true"
+      RUST_LOG: info
+    ports:
+      - "8080:8080"
+
+volumes:
+  certy_postgres_data:

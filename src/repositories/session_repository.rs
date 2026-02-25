@@ -16,6 +16,8 @@ pub struct SessionRepository {
 pub enum RepositoryError {
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
+    #[error(transparent)]
+    Migrate(#[from] sqlx::migrate::MigrateError),
     #[error("{0}")]
     Decode(String),
 }
@@ -39,8 +41,9 @@ impl SessionRepository {
     }
 
     pub async fn insert(&self, session: &CertificateSession) -> Result<(), RepositoryError> {
-        let dns_records_json = serde_json::to_value(&session.dns_records)
-            .map_err(|err| RepositoryError::Decode(format!("falha serializando dns_records: {err}")))?;
+        let dns_records_json = serde_json::to_value(&session.dns_records).map_err(|err| {
+            RepositoryError::Decode(format!("falha serializando dns_records: {err}"))
+        })?;
 
         sqlx::query(
             r#"
@@ -112,8 +115,9 @@ impl SessionRepository {
     }
 
     pub async fn update(&self, session: &CertificateSession) -> Result<(), RepositoryError> {
-        let dns_records_json = serde_json::to_value(&session.dns_records)
-            .map_err(|err| RepositoryError::Decode(format!("falha serializando dns_records: {err}")))?;
+        let dns_records_json = serde_json::to_value(&session.dns_records).map_err(|err| {
+            RepositoryError::Decode(format!("falha serializando dns_records: {err}"))
+        })?;
 
         sqlx::query(
             r#"
@@ -170,11 +174,16 @@ impl TryFrom<SessionRow> for CertificateSession {
 
     fn try_from(row: SessionRow) -> Result<Self, Self::Error> {
         let status = SessionStatus::from_db_str(&row.status).ok_or_else(|| {
-            RepositoryError::Decode(format!("status de sessão inválido no banco: {}", row.status))
+            RepositoryError::Decode(format!(
+                "status de sessão inválido no banco: {}",
+                row.status
+            ))
         })?;
 
-        let dns_records: Vec<DnsRecord> = serde_json::from_value(row.dns_records_json)
-            .map_err(|err| RepositoryError::Decode(format!("falha desserializando dns_records: {err}")))?;
+        let dns_records: Vec<DnsRecord> =
+            serde_json::from_value(row.dns_records_json).map_err(|err| {
+                RepositoryError::Decode(format!("falha desserializando dns_records: {err}"))
+            })?;
 
         Ok(CertificateSession {
             id: row.id,
