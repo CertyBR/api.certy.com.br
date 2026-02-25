@@ -35,6 +35,32 @@ impl SessionStatus {
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionEventAction {
+    SessionCreated,
+    SessionFetched,
+    FinalizeRequested,
+    ValidationPending,
+    CertificateIssued,
+    FinalizeFailed,
+    SessionInvalidated,
+}
+
+impl SessionEventAction {
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            SessionEventAction::SessionCreated => "session_created",
+            SessionEventAction::SessionFetched => "session_fetched",
+            SessionEventAction::FinalizeRequested => "finalize_requested",
+            SessionEventAction::ValidationPending => "validation_pending",
+            SessionEventAction::CertificateIssued => "certificate_issued",
+            SessionEventAction::FinalizeFailed => "finalize_failed",
+            SessionEventAction::SessionInvalidated => "session_invalidated",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DnsRecord {
     #[serde(rename = "type")]
@@ -88,8 +114,6 @@ pub struct SessionResponse {
     pub updated_at: u64,
     pub expires_at: u64,
     pub last_error: Option<String>,
-    pub certificate_pem: Option<String>,
-    pub private_key_pem: Option<String>,
 }
 
 impl SessionResponse {
@@ -104,8 +128,6 @@ impl SessionResponse {
             updated_at: unix_timestamp(session.updated_at),
             expires_at: unix_timestamp(session.expires_at),
             last_error: session.last_error.clone(),
-            certificate_pem: session.certificate_pem.clone(),
-            private_key_pem: session.private_key_pem.clone(),
         }
     }
 }
@@ -130,13 +152,50 @@ impl FinalizeSessionResponse {
         }
     }
 
-    pub fn issued(session: &CertificateSession, message: impl Into<String>) -> Self {
+    pub fn issued_ephemeral(
+        session_id: impl Into<String>,
+        certificate_pem: String,
+        private_key_pem: String,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
-            session_id: session.id.clone(),
+            session_id: session_id.into(),
             status: SessionStatus::Issued,
             message: message.into(),
-            certificate_pem: session.certificate_pem.clone(),
-            private_key_pem: session.private_key_pem.clone(),
+            certificate_pem: Some(certificate_pem),
+            private_key_pem: Some(private_key_pem),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SessionAuditEvent {
+    pub session_id: String,
+    pub domain: String,
+    pub email: String,
+    pub action: SessionEventAction,
+    pub details: Option<String>,
+    pub ip_address: Option<String>,
+    pub occurred_at: SystemTime,
+}
+
+impl SessionAuditEvent {
+    pub fn now(
+        session_id: impl Into<String>,
+        domain: impl Into<String>,
+        email: impl Into<String>,
+        action: SessionEventAction,
+        details: Option<String>,
+        ip_address: Option<String>,
+    ) -> Self {
+        Self {
+            session_id: session_id.into(),
+            domain: domain.into(),
+            email: email.into(),
+            action,
+            details,
+            ip_address,
+            occurred_at: SystemTime::now(),
         }
     }
 }
@@ -150,8 +209,6 @@ pub struct CertificateSession {
     pub dns_records: Vec<DnsRecord>,
     pub account_credentials_json: String,
     pub order_url: String,
-    pub certificate_pem: Option<String>,
-    pub private_key_pem: Option<String>,
     pub last_error: Option<String>,
     pub created_at: SystemTime,
     pub updated_at: SystemTime,
@@ -177,8 +234,6 @@ impl CertificateSession {
             dns_records,
             account_credentials_json,
             order_url,
-            certificate_pem: None,
-            private_key_pem: None,
             last_error: None,
             created_at: now,
             updated_at: now,

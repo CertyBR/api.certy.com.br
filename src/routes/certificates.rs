@@ -5,11 +5,12 @@ use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use tracing::warn;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{
     CertificateSession, CreateSessionRequest, CreateSessionResponse, FinalizeSessionResponse,
-    SessionResponse, SessionStatus,
+    SessionAuditEvent, SessionEventAction, SessionResponse, SessionStatus,
 };
 use crate::services::acme::FinalizeOutcome;
 use crate::session_id::{generate_session_id, validate_session_id};
@@ -29,6 +30,7 @@ async fn create_session(
     Json(payload): Json<CreateSessionRequest>,
 ) -> AppResult<Json<CreateSessionResponse>> {
     ensure_proxy_access(&state, &headers)?;
+    let client_ip = extract_client_ip(&headers);
     state
         .prune_expired()
         .await
@@ -58,6 +60,18 @@ async fn create_session(
         .insert(&session)
         .await
         .map_err(|err| AppError::storage(err.to_string()))?;
+    log_event_best_effort(
+        &state,
+        SessionAuditEvent::now(
+            session.id.clone(),
+            session.domain.clone(),
+            session.email.clone(),
+            SessionEventAction::SessionCreated,
+            Some("Sessão criada.".to_owned()),
+            client_ip,
+        ),
+    )
+    .await;
 
     Ok(Json(response))
 }
@@ -68,6 +82,7 @@ async fn get_session(
     Path(session_id): Path<String>,
 ) -> AppResult<Json<SessionResponse>> {
     ensure_proxy_access(&state, &headers)?;
+    let client_ip = extract_client_ip(&headers);
     state
         .prune_expired()
         .await
@@ -81,6 +96,22 @@ async fn get_session(
         .map_err(|err| AppError::storage(err.to_string()))?
         .ok_or_else(|| AppError::not_found("Sessão não encontrada."))?;
 
+    log_event_best_effort(
+        &state,
+        SessionAuditEvent::now(
+            session.id.clone(),
+            session.domain.clone(),
+            session.email.clone(),
+            SessionEventAction::SessionFetched,
+            Some(format!(
+                "Sessão consultada. status={}",
+                session.status.as_db_str()
+            )),
+            client_ip,
+        ),
+    )
+    .await;
+
     Ok(Json(SessionResponse::from_session(&session)))
 }
 
@@ -90,6 +121,7 @@ async fn finalize_session(
     Path(session_id): Path<String>,
 ) -> AppResult<Json<FinalizeSessionResponse>> {
     ensure_proxy_access(&state, &headers)?;
+    let client_ip = extract_client_ip(&headers);
     state
         .prune_expired()
         .await
@@ -109,11 +141,36 @@ async fn finalize_session(
     }
 
     if session.status == SessionStatus::Issued {
-        return Ok(Json(FinalizeSessionResponse::issued(
-            &session,
-            "Certificado já emitido para esta sessão.",
-        )));
+        let _ = state.sessions.delete_by_id(&session.id).await;
+        log_event_best_effort(
+            &state,
+            SessionAuditEvent::now(
+                session.id.clone(),
+                session.domain.clone(),
+                session.email.clone(),
+                SessionEventAction::SessionInvalidated,
+                Some("Sessão já finalizada anteriormente e foi invalidada.".to_owned()),
+                client_ip,
+            ),
+        )
+        .await;
+        return Err(AppError::conflict(
+            "Sessão já finalizada. Gere uma nova emissão.",
+        ));
     }
+
+    log_event_best_effort(
+        &state,
+        SessionAuditEvent::now(
+            session.id.clone(),
+            session.domain.clone(),
+            session.email.clone(),
+            SessionEventAction::FinalizeRequested,
+            Some("Finalização solicitada.".to_owned()),
+            client_ip.clone(),
+        ),
+    )
+    .await;
 
     session.status = SessionStatus::Validating;
     session.updated_at = now;
@@ -142,6 +199,18 @@ async fn finalize_session(
                 .update(&session)
                 .await
                 .map_err(|err| AppError::storage(err.to_string()))?;
+            log_event_best_effort(
+                &state,
+                SessionAuditEvent::now(
+                    session.id.clone(),
+                    session.domain.clone(),
+                    session.email.clone(),
+                    SessionEventAction::FinalizeFailed,
+                    Some(err_message.clone()),
+                    client_ip,
+                ),
+            )
+            .await;
             return Err(AppError::acme(err_message));
         }
     };
@@ -156,26 +225,60 @@ async fn finalize_session(
                 .update(&session)
                 .await
                 .map_err(|err| AppError::storage(err.to_string()))?;
+            log_event_best_effort(
+                &state,
+                SessionAuditEvent::now(
+                    session.id.clone(),
+                    session.domain.clone(),
+                    session.email.clone(),
+                    SessionEventAction::ValidationPending,
+                    Some(reason.clone()),
+                    client_ip,
+                ),
+            )
+            .await;
             Ok(Json(FinalizeSessionResponse::pending(
                 session.id.clone(),
                 reason,
             )))
         }
         FinalizeOutcome::Issued(issued) => {
-            session.status = SessionStatus::Issued;
-            session.updated_at = SystemTime::now();
-            session.last_error = None;
-            session.certificate_pem = Some(issued.certificate_pem);
-            session.private_key_pem = Some(issued.private_key_pem);
+            log_event_best_effort(
+                &state,
+                SessionAuditEvent::now(
+                    session.id.clone(),
+                    session.domain.clone(),
+                    session.email.clone(),
+                    SessionEventAction::CertificateIssued,
+                    Some("Certificado emitido e entregue em resposta efêmera.".to_owned()),
+                    client_ip.clone(),
+                ),
+            )
+            .await;
+
             state
                 .sessions
-                .update(&session)
+                .delete_by_id(&session.id)
                 .await
                 .map_err(|err| AppError::storage(err.to_string()))?;
+            log_event_best_effort(
+                &state,
+                SessionAuditEvent::now(
+                    session.id.clone(),
+                    session.domain.clone(),
+                    session.email.clone(),
+                    SessionEventAction::SessionInvalidated,
+                    Some("Sessão encerrada após emissão.".to_owned()),
+                    client_ip,
+                ),
+            )
+            .await;
 
-            Ok(Json(FinalizeSessionResponse::issued(
-                &session,
-                "Certificado emitido com sucesso.",
+            Ok(Json(FinalizeSessionResponse::issued_ephemeral(
+                session.id.clone(),
+                issued.certificate_pem,
+                issued.private_key_pem,
+                "Certificado emitido com sucesso. Esta sessão foi encerrada e nenhuma chave foi armazenada.",
             )))
         }
     }
@@ -200,5 +303,37 @@ fn ensure_proxy_access(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
         Err(AppError::unauthorized(
             "Acesso não autorizado. Utilize o proxy oficial.",
         ))
+    }
+}
+
+fn extract_client_ip(headers: &HeaderMap) -> Option<String> {
+    let forwarded = headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|raw| raw.split(',').next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+
+    if forwarded.is_some() {
+        return forwarded;
+    }
+
+    headers
+        .get("x-real-ip")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+async fn log_event_best_effort(state: &Arc<AppState>, event: SessionAuditEvent) {
+    if let Err(err) = state.sessions.insert_event(&event).await {
+        warn!(
+            session_id = %event.session_id,
+            action = event.action.as_db_str(),
+            error = %err,
+            "falha ao gravar evento de auditoria da sessão"
+        );
     }
 }

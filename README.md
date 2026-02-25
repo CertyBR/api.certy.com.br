@@ -5,6 +5,21 @@ persistência no PostgreSQL.
 
 As migrations rodam automaticamente na inicialização.
 
+## Política de segurança de sessão e chaves
+
+- `certificate_pem` e `private_key_pem` **não são persistidos** no banco.
+- Certificado/chave são retornados **apenas** no `POST /sessions/{session_id}/finalize` quando o
+  status chega em `issued`.
+- Após emissão com sucesso, a sessão é imediatamente encerrada (removida da tabela ativa).
+- O backend mantém auditoria em `certificate_session_events` com:
+  - `session_id`
+  - `domain`
+  - `email`
+  - `ip_address`
+  - `action`
+  - `details`
+  - `created_at`
+
 ## Opção 1: Backend local + DB em Docker
 
 ```bash
@@ -66,7 +81,8 @@ Se `PROXY_SHARED_TOKEN` for preenchido, o backend exige:
 2. API devolve o(s) registro(s) TXT `_acme-challenge`.
 3. Você cria os registros no DNS.
 4. Chama `POST /finalize`.
-5. Quando validado, resposta retorna `certificate_pem` e `private_key_pem`.
+5. Quando validado, `POST /finalize` retorna `certificate_pem` e `private_key_pem` uma única vez.
+6. A sessão é invalidada imediatamente após a emissão.
 
 ## Exemplo de criação de sessão
 

@@ -4,7 +4,7 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::{FromRow, PgPool};
 use thiserror::Error;
 
-use crate::models::{CertificateSession, DnsRecord, SessionStatus};
+use crate::models::{CertificateSession, DnsRecord, SessionAuditEvent, SessionStatus};
 
 #[derive(Clone)]
 pub struct SessionRepository {
@@ -54,15 +54,13 @@ impl SessionRepository {
                 dns_records_json,
                 account_credentials_json,
                 order_url,
-                certificate_pem,
-                private_key_pem,
                 last_error,
                 created_at,
                 updated_at,
                 expires_at
             )
             VALUES (
-                $1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13
+                $1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11
             )
             "#,
         )
@@ -73,8 +71,6 @@ impl SessionRepository {
         .bind(dns_records_json)
         .bind(&session.account_credentials_json)
         .bind(&session.order_url)
-        .bind(&session.certificate_pem)
-        .bind(&session.private_key_pem)
         .bind(&session.last_error)
         .bind(DateTime::<Utc>::from(session.created_at))
         .bind(DateTime::<Utc>::from(session.updated_at))
@@ -96,8 +92,6 @@ impl SessionRepository {
                 dns_records_json,
                 account_credentials_json,
                 order_url,
-                certificate_pem,
-                private_key_pem,
                 last_error,
                 created_at,
                 updated_at,
@@ -126,11 +120,9 @@ impl SessionRepository {
                 dns_records_json = $3::jsonb,
                 account_credentials_json = $4,
                 order_url = $5,
-                certificate_pem = $6,
-                private_key_pem = $7,
-                last_error = $8,
-                updated_at = $9,
-                expires_at = $10
+                last_error = $6,
+                updated_at = $7,
+                expires_at = $8
             WHERE id = $1
             "#,
         )
@@ -139,14 +131,47 @@ impl SessionRepository {
         .bind(dns_records_json)
         .bind(&session.account_credentials_json)
         .bind(&session.order_url)
-        .bind(&session.certificate_pem)
-        .bind(&session.private_key_pem)
         .bind(&session.last_error)
         .bind(DateTime::<Utc>::from(session.updated_at))
         .bind(DateTime::<Utc>::from(session.expires_at))
         .execute(&self.pool)
         .await?;
 
+        Ok(())
+    }
+
+    pub async fn delete_by_id(&self, id: &str) -> Result<bool, RepositoryError> {
+        let result = sqlx::query("DELETE FROM certificate_sessions WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn insert_event(&self, event: &SessionAuditEvent) -> Result<(), RepositoryError> {
+        sqlx::query(
+            r#"
+            INSERT INTO certificate_session_events (
+                session_id,
+                domain,
+                email,
+                action,
+                details,
+                ip_address,
+                created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            "#,
+        )
+        .bind(&event.session_id)
+        .bind(&event.domain)
+        .bind(&event.email)
+        .bind(event.action.as_db_str())
+        .bind(&event.details)
+        .bind(&event.ip_address)
+        .bind(DateTime::<Utc>::from(event.occurred_at))
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 }
@@ -160,8 +185,6 @@ struct SessionRow {
     dns_records_json: Value,
     account_credentials_json: String,
     order_url: String,
-    certificate_pem: Option<String>,
-    private_key_pem: Option<String>,
     last_error: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -192,8 +215,6 @@ impl TryFrom<SessionRow> for CertificateSession {
             dns_records,
             account_credentials_json: row.account_credentials_json,
             order_url: row.order_url,
-            certificate_pem: row.certificate_pem,
-            private_key_pem: row.private_key_pem,
             last_error: row.last_error,
             created_at: row.created_at.into(),
             updated_at: row.updated_at.into(),
