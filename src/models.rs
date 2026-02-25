@@ -208,7 +208,9 @@ pub struct SessionResponse {
     pub last_error: Option<String>,
     pub email_verified_at: Option<u64>,
     pub email_verification_expires_at: Option<u64>,
+    pub email_verification_last_sent_at: Option<u64>,
     pub email_verification_attempts: u32,
+    pub email_verification_resend_count: u32,
 }
 
 impl SessionResponse {
@@ -227,7 +229,11 @@ impl SessionResponse {
             email_verification_expires_at: session
                 .email_verification_expires_at
                 .map(unix_timestamp),
+            email_verification_last_sent_at: session
+                .email_verification_last_sent_at
+                .map(unix_timestamp),
             email_verification_attempts: session.email_verification_attempts.max(0) as u32,
+            email_verification_resend_count: session.email_verification_resend_count.max(0) as u32,
         }
     }
 }
@@ -312,7 +318,9 @@ pub struct CertificateSession {
     pub last_error: Option<String>,
     pub email_verification_code_hash: Option<String>,
     pub email_verification_expires_at: Option<SystemTime>,
+    pub email_verification_last_sent_at: Option<SystemTime>,
     pub email_verification_attempts: i32,
+    pub email_verification_resend_count: i32,
     pub email_verified_at: Option<SystemTime>,
     pub created_at: SystemTime,
     pub updated_at: SystemTime,
@@ -338,7 +346,9 @@ impl CertificateSession {
             last_error: None,
             email_verification_code_hash: None,
             email_verification_expires_at: None,
+            email_verification_last_sent_at: None,
             email_verification_attempts: 0,
+            email_verification_resend_count: 0,
             email_verified_at: None,
             created_at: now,
             updated_at: now,
@@ -350,10 +360,22 @@ impl CertificateSession {
         now.duration_since(self.expires_at).is_ok()
     }
 
-    pub fn set_verification_code(&mut self, code_hash: String, ttl: Duration, now: SystemTime) {
+    pub fn set_verification_code(
+        &mut self,
+        code_hash: String,
+        ttl: Duration,
+        now: SystemTime,
+        increment_resend_counter: bool,
+    ) {
         self.email_verification_code_hash = Some(code_hash);
         self.email_verification_expires_at = Some(now + ttl);
+        self.email_verification_last_sent_at = Some(now);
         self.email_verification_attempts = 0;
+        if increment_resend_counter {
+            self.email_verification_resend_count += 1;
+        } else {
+            self.email_verification_resend_count = 0;
+        }
         self.email_verified_at = None;
         self.status = SessionStatus::AwaitingEmailVerification;
         self.last_error = None;

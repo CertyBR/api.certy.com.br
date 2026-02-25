@@ -5,6 +5,7 @@ use lettre::transport::smtp::authentication::Credentials;
 use lettre::{
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor, message::header::ContentType,
 };
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::info;
 
@@ -12,9 +13,22 @@ use crate::config::AppConfig;
 
 #[derive(Clone)]
 pub struct EmailSenderService {
-    enabled: bool,
-    transport: Option<AsyncSmtpTransport<Tokio1Executor>>,
-    from: Option<Mailbox>,
+    provider: EmailProvider,
+}
+
+#[derive(Clone)]
+enum EmailProvider {
+    Resend {
+        client: reqwest::Client,
+        api_url: String,
+        api_key: String,
+        from: String,
+    },
+    Smtp {
+        transport: AsyncSmtpTransport<Tokio1Executor>,
+        from: Mailbox,
+    },
+    Disabled,
 }
 
 #[derive(Debug, Error)]
@@ -25,13 +39,37 @@ pub enum EmailSenderError {
     Send(String),
 }
 
+#[derive(Debug, Serialize)]
+struct ResendSendEmailRequest {
+    from: String,
+    to: Vec<String>,
+    subject: String,
+    text: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResendSendEmailResponse {
+    id: Option<String>,
+}
+
 impl EmailSenderService {
     pub fn new(config: &AppConfig) -> Result<Self, EmailSenderError> {
+        if let Some(api_key) = config.resend_api_key.as_ref() {
+            let from = format!("{} <{}>", config.resend_from_name, config.resend_from_email);
+
+            return Ok(Self {
+                provider: EmailProvider::Resend {
+                    client: reqwest::Client::new(),
+                    api_url: config.resend_api_url.clone(),
+                    api_key: api_key.clone(),
+                    from,
+                },
+            });
+        }
+
         let Some(host) = config.smtp_host.as_ref() else {
             return Ok(Self {
-                enabled: false,
-                transport: None,
-                from: None,
+                provider: EmailProvider::Disabled,
             });
         };
 
@@ -57,12 +95,11 @@ impl EmailSenderService {
             builder = builder.credentials(Credentials::new(username.clone(), password.clone()));
         }
 
-        let transport = builder.build();
-
         Ok(Self {
-            enabled: true,
-            transport: Some(transport),
-            from: Some(from),
+            provider: EmailProvider::Smtp {
+                transport: builder.build(),
+                from,
+            },
         })
     }
 
@@ -73,22 +110,6 @@ impl EmailSenderService {
         code: &str,
         ttl: Duration,
     ) -> Result<(), EmailSenderError> {
-        if !self.enabled {
-            info!(
-                target: "certy_backend::email",
-                to = %to_email,
-                domain = %domain,
-                code = %code,
-                "SMTP não configurado; código de verificação gerado (modo local)"
-            );
-            return Ok(());
-        }
-
-        let from = self.from.as_ref().cloned().ok_or_else(|| {
-            EmailSenderError::InvalidConfig("remetente de e-mail ausente".to_owned())
-        })?;
-        let to = Mailbox::new(None, parse_email(to_email)?);
-
         let ttl_minutes = ttl.as_secs() / 60;
         let subject = format!("Certy: código de verificação para {domain}");
         let body = format!(
@@ -97,35 +118,104 @@ impl EmailSenderService {
              Se você não solicitou esta emissão, ignore este e-mail."
         );
 
-        let message = Message::builder()
-            .from(from)
-            .to(to)
-            .subject(subject)
-            .header(ContentType::TEXT_PLAIN)
-            .body(body)
-            .map_err(|err| EmailSenderError::InvalidConfig(err.to_string()))?;
+        match &self.provider {
+            EmailProvider::Resend {
+                client,
+                api_url,
+                api_key,
+                from,
+            } => {
+                let request_payload = ResendSendEmailRequest {
+                    from: from.clone(),
+                    to: vec![to_email.to_owned()],
+                    subject,
+                    text: body,
+                };
 
-        let transport = self.transport.as_ref().ok_or_else(|| {
-            EmailSenderError::InvalidConfig("transporte SMTP indisponível".to_owned())
-        })?;
+                let response = client
+                    .post(api_url)
+                    .bearer_auth(api_key)
+                    .json(&request_payload)
+                    .send()
+                    .await
+                    .map_err(|err| EmailSenderError::Send(err.to_string()))?;
 
-        transport
-            .send(message)
-            .await
-            .map_err(|err| EmailSenderError::Send(err.to_string()))?;
+                if !response.status().is_success() {
+                    let status = response.status();
+                    let response_body = response.text().await.unwrap_or_default();
+                    return Err(EmailSenderError::Send(format!(
+                        "Resend retornou HTTP {status}: {}",
+                        compact_error_body(&response_body)
+                    )));
+                }
 
-        info!(
-            target: "certy_backend::email",
-            to = %to_email,
-            domain = %domain,
-            "código de verificação enviado"
-        );
+                let resend_response = response
+                    .json::<ResendSendEmailResponse>()
+                    .await
+                    .unwrap_or(ResendSendEmailResponse { id: None });
 
-        Ok(())
+                info!(
+                    target: "certy_backend::email",
+                    provider = "resend",
+                    to = %to_email,
+                    domain = %domain,
+                    message_id = resend_response.id.unwrap_or_else(|| "unknown".to_owned()),
+                    "código de verificação enviado"
+                );
+
+                Ok(())
+            }
+            EmailProvider::Smtp { transport, from } => {
+                let to = Mailbox::new(None, parse_email(to_email)?);
+
+                let message = Message::builder()
+                    .from(from.clone())
+                    .to(to)
+                    .subject(subject)
+                    .header(ContentType::TEXT_PLAIN)
+                    .body(body)
+                    .map_err(|err| EmailSenderError::InvalidConfig(err.to_string()))?;
+
+                transport
+                    .send(message)
+                    .await
+                    .map_err(|err| EmailSenderError::Send(err.to_string()))?;
+
+                info!(
+                    target: "certy_backend::email",
+                    provider = "smtp",
+                    to = %to_email,
+                    domain = %domain,
+                    "código de verificação enviado"
+                );
+
+                Ok(())
+            }
+            EmailProvider::Disabled => {
+                info!(
+                    target: "certy_backend::email",
+                    provider = "local",
+                    to = %to_email,
+                    domain = %domain,
+                    code = %code,
+                    "serviço de e-mail não configurado; código gerado (modo local)"
+                );
+                Ok(())
+            }
+        }
     }
 }
 
 fn parse_email(raw: &str) -> Result<lettre::Address, EmailSenderError> {
     raw.parse::<lettre::Address>()
         .map_err(|err| EmailSenderError::InvalidConfig(err.to_string()))
+}
+
+fn compact_error_body(body: &str) -> String {
+    let cleaned = body.trim().replace('\n', " ");
+    if cleaned.len() <= 240 {
+        return cleaned;
+    }
+
+    format!("{}...", &cleaned[..240])
 }

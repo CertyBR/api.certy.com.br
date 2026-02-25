@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
@@ -74,7 +74,12 @@ async fn create_session(
         .await
         .map_err(map_email_sender_error)?;
 
-    session.set_verification_code(code_hash, state.email_verification_service.ttl(), now);
+    session.set_verification_code(
+        code_hash,
+        state.email_verification_service.ttl(),
+        now,
+        false,
+    );
 
     let response = CreateSessionResponse::from_session(&session);
     state
@@ -171,6 +176,25 @@ async fn resend_verification_code(
     }
 
     let now = SystemTime::now();
+    let max_resends = state.config.email_verification_max_resends as i32;
+    if session.email_verification_resend_count >= max_resends {
+        return Err(AppError::conflict(
+            "Limite de reenvio atingido. Inicie uma nova sessão.",
+        ));
+    }
+
+    if let Some(last_sent_at) = session.email_verification_last_sent_at {
+        if let Ok(elapsed) = now.duration_since(last_sent_at) {
+            if elapsed < state.config.email_verification_resend_interval {
+                let remaining = state.config.email_verification_resend_interval - elapsed;
+                return Err(AppError::conflict(format!(
+                    "Aguarde {} para reenviar outro código.",
+                    format_compact_duration(remaining)
+                )));
+            }
+        }
+    }
+
     let code = state.email_verification_service.generate_code();
     let code_hash = state
         .email_verification_service
@@ -180,7 +204,7 @@ async fn resend_verification_code(
         .await
         .map_err(map_email_sender_error)?;
 
-    session.set_verification_code(code_hash, state.email_verification_service.ttl(), now);
+    session.set_verification_code(code_hash, state.email_verification_service.ttl(), now, true);
 
     state
         .sessions
@@ -203,7 +227,10 @@ async fn resend_verification_code(
 
     Ok(Json(SessionActionResponse::from_session(
         &session,
-        "Novo código enviado para seu e-mail.",
+        format!(
+            "Novo código enviado para seu e-mail. Reenvios restantes: {}.",
+            (max_resends - session.email_verification_resend_count).max(0)
+        ),
     )))
 }
 
@@ -828,4 +855,11 @@ fn map_dns_precheck_error(err: DnsPrecheckError) -> AppError {
     match err {
         DnsPrecheckError::Upstream(message) => AppError::upstream(message),
     }
+}
+
+fn format_compact_duration(duration: Duration) -> String {
+    let total_seconds = duration.as_secs();
+    let minutes = total_seconds / 60;
+    let seconds = total_seconds % 60;
+    format!("{minutes}m {seconds:02}s")
 }

@@ -74,7 +74,13 @@ EMAIL_VALIDATION_API_URL=https://api.likn.dev/v1/public/email-validation/validat
 EMAIL_VALIDATION_TIMEOUT_MS=4500
 EMAIL_VERIFICATION_CODE_TTL_MINUTES=10
 EMAIL_VERIFICATION_MAX_ATTEMPTS=5
+EMAIL_VERIFICATION_MAX_RESENDS=3
+EMAIL_VERIFICATION_RESEND_INTERVAL_MINUTES=10
 EMAIL_VERIFICATION_SECRET=change-me-in-production
+RESEND_API_KEY=
+RESEND_API_URL=https://api.resend.com/emails
+RESEND_FROM_EMAIL=certy.zerocert@send.likncorp.com
+RESEND_FROM_NAME=Certy by ZeroCert
 SMTP_HOST=
 SMTP_PORT=587
 SMTP_USERNAME=
@@ -91,6 +97,11 @@ ACME_POLL_INITIAL_DELAY_MS=500
 ACME_POLL_BACKOFF=1.8
 RUST_LOG=info
 ```
+
+Prioridade de envio de e-mail:
+1. Resend (`RESEND_API_KEY`)
+2. SMTP (se `RESEND_API_KEY` estiver vazio e `SMTP_HOST` configurado)
+3. Modo local (log) quando nenhum provedor estiver configurado
 
 Se `PROXY_SHARED_TOKEN` for preenchido, o backend exige:
 - header `X-Certy-Proxy-Token` em `/api/v1/certificates/*`
@@ -112,13 +123,14 @@ Se `PROXY_SHARED_TOKEN` for preenchido, o backend exige:
 
 1. `POST /sessions` com `domain` e `email`.
 2. Backend envia código de verificação para o e-mail informado.
-3. `POST /sessions/{session_id}/verify-email` com o código.
-4. API devolve o(s) registro(s) TXT `_acme-challenge`.
-5. Você cria os registros no DNS.
-6. `POST /sessions/{session_id}/dns-check` para pré-checagem DNS no backend.
-7. `POST /sessions/{session_id}/finalize` somente após DNS pronto.
-8. Quando validado, `POST /finalize` retorna `certificate_pem` e `private_key_pem` uma única vez.
-9. A sessão é invalidada imediatamente após a emissão.
+3. Reenvio do código: máximo de 3 reenvios por sessão, com intervalo mínimo de 10 minutos entre reenvios.
+4. `POST /sessions/{session_id}/verify-email` com o código.
+5. API devolve o(s) registro(s) TXT `_acme-challenge`.
+6. Você cria os registros no DNS.
+7. `POST /sessions/{session_id}/dns-check` para pré-checagem DNS no backend.
+8. `POST /sessions/{session_id}/finalize` somente após DNS pronto.
+9. Quando validado, `POST /finalize` retorna `certificate_pem` e `private_key_pem` uma única vez.
+10. A sessão é invalidada imediatamente após a emissão.
 
 ## Exemplo de criação de sessão
 

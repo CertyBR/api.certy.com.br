@@ -57,14 +57,16 @@ impl SessionRepository {
                 last_error,
                 email_verification_code_hash,
                 email_verification_expires_at,
+                email_verification_last_sent_at,
                 email_verification_attempts,
+                email_verification_resend_count,
                 email_verified_at,
                 created_at,
                 updated_at,
                 expires_at
             )
             VALUES (
-                $1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+                $1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
             )
             "#,
         )
@@ -82,7 +84,13 @@ impl SessionRepository {
                 .email_verification_expires_at
                 .map(DateTime::<Utc>::from),
         )
+        .bind(
+            session
+                .email_verification_last_sent_at
+                .map(DateTime::<Utc>::from),
+        )
         .bind(session.email_verification_attempts)
+        .bind(session.email_verification_resend_count)
         .bind(session.email_verified_at.map(DateTime::<Utc>::from))
         .bind(DateTime::<Utc>::from(session.created_at))
         .bind(DateTime::<Utc>::from(session.updated_at))
@@ -107,7 +115,9 @@ impl SessionRepository {
                 last_error,
                 email_verification_code_hash,
                 email_verification_expires_at,
+                email_verification_last_sent_at,
                 email_verification_attempts,
+                email_verification_resend_count,
                 email_verified_at,
                 created_at,
                 updated_at,
@@ -139,10 +149,12 @@ impl SessionRepository {
                 last_error = $6,
                 email_verification_code_hash = $7,
                 email_verification_expires_at = $8,
-                email_verification_attempts = $9,
-                email_verified_at = $10,
-                updated_at = $11,
-                expires_at = $12
+                email_verification_last_sent_at = $9,
+                email_verification_attempts = $10,
+                email_verification_resend_count = $11,
+                email_verified_at = $12,
+                updated_at = $13,
+                expires_at = $14
             WHERE id = $1
             "#,
         )
@@ -158,7 +170,13 @@ impl SessionRepository {
                 .email_verification_expires_at
                 .map(DateTime::<Utc>::from),
         )
+        .bind(
+            session
+                .email_verification_last_sent_at
+                .map(DateTime::<Utc>::from),
+        )
         .bind(session.email_verification_attempts)
+        .bind(session.email_verification_resend_count)
         .bind(session.email_verified_at.map(DateTime::<Utc>::from))
         .bind(DateTime::<Utc>::from(session.updated_at))
         .bind(DateTime::<Utc>::from(session.expires_at))
@@ -216,7 +234,9 @@ struct SessionRow {
     last_error: Option<String>,
     email_verification_code_hash: Option<String>,
     email_verification_expires_at: Option<DateTime<Utc>>,
+    email_verification_last_sent_at: Option<DateTime<Utc>>,
     email_verification_attempts: i32,
+    email_verification_resend_count: i32,
     email_verified_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -250,7 +270,9 @@ impl TryFrom<SessionRow> for CertificateSession {
             last_error: row.last_error,
             email_verification_code_hash: row.email_verification_code_hash,
             email_verification_expires_at: row.email_verification_expires_at.map(Into::into),
+            email_verification_last_sent_at: row.email_verification_last_sent_at.map(Into::into),
             email_verification_attempts: row.email_verification_attempts,
+            email_verification_resend_count: row.email_verification_resend_count,
             email_verified_at: row.email_verified_at.map(Into::into),
             created_at: row.created_at.into(),
             updated_at: row.updated_at.into(),
