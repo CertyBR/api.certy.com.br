@@ -12,6 +12,7 @@ use certy_backend::state::AppState;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
+    init_rustls_crypto_provider();
     init_tracing();
 
     let config = AppConfig::from_env();
@@ -31,6 +32,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("certy backend listening on http://{bind_addr}");
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+fn init_rustls_crypto_provider() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 }
 
 fn init_tracing() {

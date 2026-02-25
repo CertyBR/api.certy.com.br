@@ -90,6 +90,7 @@ pub struct SessionResponse {
     pub expires_at: u64,
     pub last_error: Option<String>,
     pub certificate_pem: Option<String>,
+    pub private_key_pem: Option<String>,
 }
 
 impl SessionResponse {
@@ -105,6 +106,7 @@ impl SessionResponse {
             expires_at: unix_timestamp(session.expires_at),
             last_error: session.last_error.clone(),
             certificate_pem: session.certificate_pem.clone(),
+            private_key_pem: session.private_key_pem.clone(),
         }
     }
 }
