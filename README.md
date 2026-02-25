@@ -26,6 +26,7 @@ As migrations rodam automaticamente na inicialização.
 
 ```bash
 cp .env.example .env
+mkdir -p ./data/postgres
 docker compose -f docker-compose.db.yml up -d
 cargo run
 ```
@@ -36,9 +37,18 @@ Para essa opção, mantenha no `.env`:
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/certy
 ```
 
+`POSTGRES_DATA_DIR` define o bind mount do Postgres (pasta física no host):
+
+```env
+POSTGRES_DATA_DIR=./data/postgres
+# ou caminho absoluto:
+# POSTGRES_DATA_DIR=/home/user/zerocert/certy.com.br/backend/data/postgres
+```
+
 ## Opção 2: Backend + DB em Docker
 
 ```bash
+mkdir -p ./data/postgres
 docker compose up --build -d
 ```
 
@@ -56,6 +66,7 @@ PROXY_SHARED_TOKEN=seu-token docker compose up --build -d
 BACKEND_BIND_ADDR=0.0.0.0:8080
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/certy
 PROXY_SHARED_TOKEN=
+POSTGRES_DATA_DIR=./data/postgres
 EMAIL_VALIDATION_API_URL=https://api.likn.dev/v1/public/email-validation/validate
 EMAIL_VALIDATION_TIMEOUT_MS=4500
 ACME_USE_STAGING=false

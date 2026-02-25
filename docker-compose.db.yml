@@ -10,12 +10,9 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - certy_postgres_data:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_DIR:-./data/postgres}:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d certy"]
       interval: 5s
       timeout: 5s
       retries: 10
-
-volumes:
-  certy_postgres_data:
