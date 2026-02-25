@@ -4,5 +4,6 @@ pub mod models;
 pub mod repositories;
 pub mod routes;
 pub mod services;
+pub mod session_id;
 pub mod state;
 pub mod validation;

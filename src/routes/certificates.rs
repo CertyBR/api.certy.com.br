@@ -5,7 +5,6 @@ use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{
@@ -13,6 +12,7 @@ use crate::models::{
     SessionResponse, SessionStatus,
 };
 use crate::services::acme::FinalizeOutcome;
+use crate::session_id::{generate_session_id, validate_session_id};
 use crate::state::AppState;
 use crate::validation::{normalize_domain, validate_email};
 
@@ -43,7 +43,7 @@ async fn create_session(
         .map_err(AppError::acme)?;
 
     let session = CertificateSession::new(
-        Uuid::new_v4(),
+        generate_session_id(),
         domain,
         email,
         bootstrap.dns_records,
@@ -76,7 +76,7 @@ async fn get_session(
 
     let session = state
         .sessions
-        .get_by_id(session_id)
+        .get_by_id(&session_id)
         .await
         .map_err(|err| AppError::storage(err.to_string()))?
         .ok_or_else(|| AppError::not_found("Sessão não encontrada."))?;
@@ -98,7 +98,7 @@ async fn finalize_session(
 
     let mut session = state
         .sessions
-        .get_by_id(session_id)
+        .get_by_id(&session_id)
         .await
         .map_err(|err| AppError::storage(err.to_string()))?
         .ok_or_else(|| AppError::not_found("Sessão não encontrada."))?;
@@ -156,7 +156,10 @@ async fn finalize_session(
                 .update(&session)
                 .await
                 .map_err(|err| AppError::storage(err.to_string()))?;
-            Ok(Json(FinalizeSessionResponse::pending(session.id, reason)))
+            Ok(Json(FinalizeSessionResponse::pending(
+                session.id.clone(),
+                reason,
+            )))
         }
         FinalizeOutcome::Issued(issued) => {
             session.status = SessionStatus::Issued;
@@ -178,9 +181,8 @@ async fn finalize_session(
     }
 }
 
-fn parse_session_id(session_id: &str) -> AppResult<Uuid> {
-    Uuid::parse_str(session_id)
-        .map_err(|_| AppError::validation("session_id inválido (esperado UUID)."))
+fn parse_session_id(session_id: &str) -> AppResult<String> {
+    validate_session_id(session_id)
 }
 
 fn ensure_proxy_access(state: &AppState, headers: &HeaderMap) -> AppResult<()> {

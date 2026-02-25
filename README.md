@@ -58,6 +58,8 @@ Se `PROXY_SHARED_TOKEN` for preenchido, o backend exige:
 - `GET /api/v1/certificates/sessions/{session_id}`
 - `POST /api/v1/certificates/sessions/{session_id}/finalize`
 
+`session_id` é um token longo aleatório (base64url), não um UUID.
+
 ## Fluxo
 
 1. `POST /sessions` com `domain` e `email`.

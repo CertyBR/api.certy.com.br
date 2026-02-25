@@ -3,7 +3,6 @@ use serde_json::Value;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{FromRow, PgPool};
 use thiserror::Error;
-use uuid::Uuid;
 
 use crate::models::{CertificateSession, DnsRecord, SessionStatus};
 
@@ -67,7 +66,7 @@ impl SessionRepository {
             )
             "#,
         )
-        .bind(session.id)
+        .bind(&session.id)
         .bind(&session.domain)
         .bind(&session.email)
         .bind(session.status.as_db_str())
@@ -86,7 +85,7 @@ impl SessionRepository {
         Ok(())
     }
 
-    pub async fn get_by_id(&self, id: Uuid) -> Result<Option<CertificateSession>, RepositoryError> {
+    pub async fn get_by_id(&self, id: &str) -> Result<Option<CertificateSession>, RepositoryError> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT
@@ -135,7 +134,7 @@ impl SessionRepository {
             WHERE id = $1
             "#,
         )
-        .bind(session.id)
+        .bind(&session.id)
         .bind(session.status.as_db_str())
         .bind(dns_records_json)
         .bind(&session.account_credentials_json)
@@ -154,7 +153,7 @@ impl SessionRepository {
 
 #[derive(Debug, FromRow)]
 struct SessionRow {
-    id: Uuid,
+    id: String,
     domain: String,
     email: String,
     status: String,

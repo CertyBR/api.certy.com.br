@@ -1,7 +1,6 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -52,7 +51,7 @@ pub struct CreateSessionRequest {
 
 #[derive(Debug, Serialize)]
 pub struct CreateSessionResponse {
-    pub session_id: Uuid,
+    pub session_id: String,
     pub status: SessionStatus,
     pub domain: String,
     pub email: String,
@@ -65,7 +64,7 @@ pub struct CreateSessionResponse {
 impl CreateSessionResponse {
     pub fn from_session(session: &CertificateSession) -> Self {
         Self {
-            session_id: session.id,
+            session_id: session.id.clone(),
             status: session.status,
             domain: session.domain.clone(),
             email: session.email.clone(),
@@ -80,7 +79,7 @@ impl CreateSessionResponse {
 
 #[derive(Debug, Serialize)]
 pub struct SessionResponse {
-    pub session_id: Uuid,
+    pub session_id: String,
     pub status: SessionStatus,
     pub domain: String,
     pub email: String,
@@ -96,7 +95,7 @@ pub struct SessionResponse {
 impl SessionResponse {
     pub fn from_session(session: &CertificateSession) -> Self {
         Self {
-            session_id: session.id,
+            session_id: session.id.clone(),
             status: session.status,
             domain: session.domain.clone(),
             email: session.email.clone(),
@@ -113,7 +112,7 @@ impl SessionResponse {
 
 #[derive(Debug, Serialize)]
 pub struct FinalizeSessionResponse {
-    pub session_id: Uuid,
+    pub session_id: String,
     pub status: SessionStatus,
     pub message: String,
     pub certificate_pem: Option<String>,
@@ -121,9 +120,9 @@ pub struct FinalizeSessionResponse {
 }
 
 impl FinalizeSessionResponse {
-    pub fn pending(session_id: Uuid, message: impl Into<String>) -> Self {
+    pub fn pending(session_id: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
-            session_id,
+            session_id: session_id.into(),
             status: SessionStatus::PendingDns,
             message: message.into(),
             certificate_pem: None,
@@ -133,7 +132,7 @@ impl FinalizeSessionResponse {
 
     pub fn issued(session: &CertificateSession, message: impl Into<String>) -> Self {
         Self {
-            session_id: session.id,
+            session_id: session.id.clone(),
             status: SessionStatus::Issued,
             message: message.into(),
             certificate_pem: session.certificate_pem.clone(),
@@ -144,7 +143,7 @@ impl FinalizeSessionResponse {
 
 #[derive(Clone, Debug)]
 pub struct CertificateSession {
-    pub id: Uuid,
+    pub id: String,
     pub domain: String,
     pub email: String,
     pub status: SessionStatus,
@@ -161,7 +160,7 @@ pub struct CertificateSession {
 
 impl CertificateSession {
     pub fn new(
-        id: Uuid,
+        id: String,
         domain: String,
         email: String,
         dns_records: Vec<DnsRecord>,
