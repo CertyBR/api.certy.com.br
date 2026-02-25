@@ -27,11 +27,18 @@ docker compose up --build -d
 
 Backend: `http://localhost:8080`
 
+Se quiser ativar validação de token no backend com Docker:
+
+```bash
+PROXY_SHARED_TOKEN=seu-token docker compose up --build -d
+```
+
 ## Configuração principal (`.env`)
 
 ```env
 BACKEND_BIND_ADDR=0.0.0.0:8080
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/certy
+PROXY_SHARED_TOKEN=
 ACME_USE_STAGING=false
 SESSION_TTL_MINUTES=60
 ACME_POLL_TIMEOUT_SECONDS=120
@@ -39,6 +46,10 @@ ACME_POLL_INITIAL_DELAY_MS=500
 ACME_POLL_BACKOFF=1.8
 RUST_LOG=info
 ```
+
+Se `PROXY_SHARED_TOKEN` for preenchido, o backend exige:
+- header `X-Certy-Proxy-Token` em `/api/v1/certificates/*`
+- recomendação: enviar esse header apenas via Cloudflare Worker (`proxy/`)
 
 ## Endpoints da API
 

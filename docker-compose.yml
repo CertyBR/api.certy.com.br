@@ -29,6 +29,7 @@ services:
     environment:
       BACKEND_BIND_ADDR: 0.0.0.0:8080
       DATABASE_URL: postgres://postgres:postgres@db:5432/certy
+      PROXY_SHARED_TOKEN: ${PROXY_SHARED_TOKEN:-}
       ACME_USE_STAGING: "true"
       RUST_LOG: info
     ports:

@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use axum::extract::{Path, State};
+use axum::http::HeaderMap;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use uuid::Uuid;
@@ -24,8 +25,10 @@ pub fn router() -> Router<Arc<AppState>> {
 
 async fn create_session(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(payload): Json<CreateSessionRequest>,
 ) -> AppResult<Json<CreateSessionResponse>> {
+    ensure_proxy_access(&state, &headers)?;
     state
         .prune_expired()
         .await
@@ -61,8 +64,10 @@ async fn create_session(
 
 async fn get_session(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(session_id): Path<String>,
 ) -> AppResult<Json<SessionResponse>> {
+    ensure_proxy_access(&state, &headers)?;
     state
         .prune_expired()
         .await
@@ -81,8 +86,10 @@ async fn get_session(
 
 async fn finalize_session(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(session_id): Path<String>,
 ) -> AppResult<Json<FinalizeSessionResponse>> {
+    ensure_proxy_access(&state, &headers)?;
     state
         .prune_expired()
         .await
@@ -174,4 +181,22 @@ async fn finalize_session(
 fn parse_session_id(session_id: &str) -> AppResult<Uuid> {
     Uuid::parse_str(session_id)
         .map_err(|_| AppError::validation("session_id inválido (esperado UUID)."))
+}
+
+fn ensure_proxy_access(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
+    let Some(expected_token) = state.config.proxy_shared_token.as_ref() else {
+        return Ok(());
+    };
+
+    let sent_token = headers
+        .get("x-certy-proxy-token")
+        .and_then(|value| value.to_str().ok());
+
+    if sent_token == Some(expected_token.as_str()) {
+        Ok(())
+    } else {
+        Err(AppError::unauthorized(
+            "Acesso não autorizado. Utilize o proxy oficial.",
+        ))
+    }
 }

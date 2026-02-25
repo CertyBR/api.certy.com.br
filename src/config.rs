@@ -7,6 +7,7 @@ use instant_acme::LetsEncrypt;
 pub struct AppConfig {
     pub bind_addr: String,
     pub database_url: String,
+    pub proxy_shared_token: Option<String>,
     pub acme_directory_url: String,
     pub session_ttl: Duration,
     pub poll_timeout: Duration,
@@ -32,6 +33,10 @@ impl AppConfig {
             bind_addr: env::var("BACKEND_BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_owned()),
             database_url: env::var("DATABASE_URL")
                 .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/certy".to_owned()),
+            proxy_shared_token: env::var("PROXY_SHARED_TOKEN")
+                .ok()
+                .map(|raw| raw.trim().to_owned())
+                .filter(|raw| !raw.is_empty()),
             acme_directory_url,
             session_ttl: Duration::from_secs(env_u64("SESSION_TTL_MINUTES", 60) * 60),
             poll_timeout: Duration::from_secs(env_u64("ACME_POLL_TIMEOUT_SECONDS", 120)),

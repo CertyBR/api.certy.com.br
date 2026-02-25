@@ -11,6 +11,8 @@ pub enum AppError {
     #[error("{0}")]
     Validation(String),
     #[error("{0}")]
+    Unauthorized(String),
+    #[error("{0}")]
     NotFound(String),
     #[error("{0}")]
     Conflict(String),
@@ -23,6 +25,10 @@ pub enum AppError {
 impl AppError {
     pub fn validation(message: impl Into<String>) -> Self {
         Self::Validation(message.into())
+    }
+
+    pub fn unauthorized(message: impl Into<String>) -> Self {
+        Self::Unauthorized(message.into())
     }
 
     pub fn not_found(message: impl Into<String>) -> Self {
@@ -46,6 +52,7 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = match self {
             AppError::Validation(_) => StatusCode::BAD_REQUEST,
+            AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::Acme(_) => StatusCode::BAD_GATEWAY,
