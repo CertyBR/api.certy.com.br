@@ -51,8 +51,20 @@ impl AppConfig {
             }
         };
 
+        let backend_port = env::var("BACKEND_PORT")
+            .ok()
+            .map(|raw| raw.trim().to_owned())
+            .filter(|raw| !raw.is_empty())
+            .and_then(|raw| raw.parse::<u16>().ok())
+            .unwrap_or_else(|| {
+                panic!(
+                    "variável obrigatória ausente/inválida: BACKEND_PORT (esperado inteiro de 1 a 65535)"
+                )
+            });
+        let bind_addr = format!("0.0.0.0:{backend_port}");
+
         Self {
-            bind_addr: env::var("BACKEND_BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_owned()),
+            bind_addr,
             database_url: env::var("DATABASE_URL")
                 .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/certy".to_owned()),
             proxy_shared_token: env::var("PROXY_SHARED_TOKEN")

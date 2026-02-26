@@ -28,10 +28,10 @@ services:
     env_file:
       - .env
     environment:
-      BACKEND_BIND_ADDR: ${BACKEND_BIND_ADDR}
+      BACKEND_PORT: ${BACKEND_PORT:?BACKEND_PORT is required}
       DATABASE_URL: ${DATABASE_URL}
       PROXY_SHARED_TOKEN: ${PROXY_SHARED_TOKEN}
       ACME_USE_STAGING: ${ACME_USE_STAGING}
       RUST_LOG: ${RUST_LOG}
     ports:
-      - "${BACKEND_HOST_PORT:-8080}:${BACKEND_CONTAINER_PORT:-8080}"
+      - "${BACKEND_PORT:?BACKEND_PORT is required}:${BACKEND_PORT:?BACKEND_PORT is required}"

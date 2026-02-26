@@ -131,9 +131,7 @@ Variáveis principais:
 
 | Variável | Descrição | Default |
 | --- | --- | --- |
-| `BACKEND_BIND_ADDR` | Endereço de bind HTTP | `0.0.0.0:8080` |
-| `BACKEND_HOST_PORT` | Porta publicada no host para o backend (docker-compose) | `8080` |
-| `BACKEND_CONTAINER_PORT` | Porta interna do container backend (docker-compose) | `8080` |
+| `BACKEND_PORT` | Porta do backend (bind interno e porta publicada no Docker Compose), obrigatória | sem default |
 | `DATABASE_URL` | URL de conexão PostgreSQL | `postgres://postgres:postgres@localhost:5432/certy` |
 | `POSTGRES_DB` | Nome do banco PostgreSQL usado no Docker Compose | `certy` |
 | `POSTGRES_USER` | Usuário PostgreSQL usado no Docker Compose | `postgres` |
@@ -206,8 +204,7 @@ Nessa opção, o backend usa internamente:
 DATABASE_URL=postgres://postgres:postgres@db:5432/certy
 ```
 
-`docker-compose.yml` sobe backend na porta `BACKEND_HOST_PORT` (padrão `8080`) e DB interno na rede Docker (sem exposição no host).
-Se alterar `BACKEND_CONTAINER_PORT`, ajuste também `BACKEND_BIND_ADDR` para a mesma porta interna.
+`docker-compose.yml` sobe backend na porta `BACKEND_PORT` (padrão `8080`) e DB interno na rede Docker (sem exposição no host).
 
 ## Endpoints
 
