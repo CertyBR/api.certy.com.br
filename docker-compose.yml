@@ -4,20 +4,19 @@ services:
     container_name: certy-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: certy
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - ${POSTGRES_DATA_DIR:-./data/postgres}:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d certy"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   backend:
+    image: certy-backend
     build:
       context: .
       dockerfile: Dockerfile
@@ -26,11 +25,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
-      BACKEND_BIND_ADDR: 0.0.0.0:8080
-      DATABASE_URL: postgres://postgres:postgres@db:5432/certy
-      PROXY_SHARED_TOKEN: ${PROXY_SHARED_TOKEN:-}
-      ACME_USE_STAGING: "true"
-      RUST_LOG: info
+      BACKEND_BIND_ADDR: ${BACKEND_BIND_ADDR}
+      DATABASE_URL: ${DATABASE_URL}
+      PROXY_SHARED_TOKEN: ${PROXY_SHARED_TOKEN}
+      ACME_USE_STAGING: ${ACME_USE_STAGING}
+      RUST_LOG: ${RUST_LOG}
     ports:
       - "8080:8080"
