@@ -12,7 +12,7 @@ Este backend implementa um fluxo em etapas:
 2. valida e-mail via API externa (Likn);
 3. cria sessão com `session_id` aleatório;
 4. envia código de verificação por e-mail (Resend, SMTP ou modo local);
-5. após código válido, cria pedido ACME e retorna registros DNS;
+5. após código válido, reutiliza/cria conta ACME compartilhada, cria pedido e retorna registros DNS;
 6. faz pré-checagem DNS antes de acionar a CA;
 7. finaliza emissão e retorna certificado/chave apenas uma vez;
 8. invalida a sessão imediatamente após emissão.
@@ -37,6 +37,7 @@ backend/
     0003_harden_session_storage.sql
     0004_add_email_verification_fields.sql
     0005_add_email_resend_controls.sql
+    0006_create_acme_accounts.sql
   src/
     config.rs
     error.rs
@@ -131,7 +132,13 @@ Variáveis principais:
 | Variável | Descrição | Default |
 | --- | --- | --- |
 | `BACKEND_BIND_ADDR` | Endereço de bind HTTP | `0.0.0.0:8080` |
+| `BACKEND_HOST_PORT` | Porta publicada no host para o backend (docker-compose) | `8080` |
+| `BACKEND_CONTAINER_PORT` | Porta interna do container backend (docker-compose) | `8080` |
 | `DATABASE_URL` | URL de conexão PostgreSQL | `postgres://postgres:postgres@localhost:5432/certy` |
+| `POSTGRES_DB` | Nome do banco PostgreSQL usado no Docker Compose | `certy` |
+| `POSTGRES_USER` | Usuário PostgreSQL usado no Docker Compose | `postgres` |
+| `POSTGRES_PASSWORD` | Senha PostgreSQL usada no Docker Compose | `postgres` |
+| `POSTGRES_HOST_PORT` | Porta publicada no host pelo `docker-compose.db.yml` | `5432` |
 | `PROXY_SHARED_TOKEN` | Token opcional exigido em `X-Certy-Proxy-Token` | vazio |
 | `POSTGRES_DATA_DIR` | Pasta local para bind mount do Postgres no Docker | `./data/postgres` |
 | `EMAIL_VALIDATION_API_URL` | Endpoint Likn para validação de e-mail | `https://api.likn.dev/v1/public/email-validation/validate` |
@@ -156,6 +163,8 @@ Variáveis principais:
 | `DNS_CHECK_TIMEOUT_MS` | Timeout de pré-checagem DNS | `4500` |
 | `ACME_DIRECTORY_URL` | URL direta da CA ACME (opcional) | vazio |
 | `ACME_USE_STAGING` | Usa Let's Encrypt Staging quando `ACME_DIRECTORY_URL` vazio | `false` |
+| `ACME_ACCOUNT_CONTACT_EMAIL` | E-mail de contato da conta ACME compartilhada (opcional) | vazio |
+| `ACME_ACCOUNT_CREDENTIALS_JSON` | Credenciais JSON de conta ACME existente (opcional) | vazio |
 | `SESSION_TTL_MINUTES` | TTL da sessão de emissão | `60` |
 | `ACME_POLL_TIMEOUT_SECONDS` | Timeout de polling ACME | `120` |
 | `ACME_POLL_INITIAL_DELAY_MS` | Delay inicial de polling ACME | `500` |
@@ -197,7 +206,8 @@ Nessa opção, o backend usa internamente:
 DATABASE_URL=postgres://postgres:postgres@db:5432/certy
 ```
 
-`docker-compose.yml` sobe backend na porta `8080` e DB na `5432`.
+`docker-compose.yml` sobe backend na porta `BACKEND_HOST_PORT` (padrão `8080`) e DB interno na rede Docker (sem exposição no host).
+Se alterar `BACKEND_CONTAINER_PORT`, ajuste também `BACKEND_BIND_ADDR` para a mesma porta interna.
 
 ## Endpoints
 
@@ -254,6 +264,7 @@ Migrations aplicadas automaticamente:
 - `0003`: remove colunas persistentes de certificado/chave e cria `certificate_session_events`
 - `0004`: adiciona campos de verificação de e-mail
 - `0005`: adiciona controle de reenvio (`last_sent_at`, `resend_count`)
+- `0006`: cria `acme_accounts` para reutilização de conta ACME por `directory_url`
 
 Retenção:
 

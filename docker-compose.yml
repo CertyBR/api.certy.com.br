@@ -34,4 +34,4 @@ services:
       ACME_USE_STAGING: ${ACME_USE_STAGING}
       RUST_LOG: ${RUST_LOG}
     ports:
-      - "8080:8080"
+      - "${BACKEND_HOST_PORT:-8080}:${BACKEND_CONTAINER_PORT:-8080}"

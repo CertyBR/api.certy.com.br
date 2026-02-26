@@ -38,24 +38,12 @@ impl AcmeService {
     pub async fn create_order(
         &self,
         domain: &str,
-        email: &str,
+        fallback_contact_email: &str,
+        shared_account_credentials_json: Option<&str>,
     ) -> Result<AcmeOrderBootstrap, String> {
-        let contact_mailto = format!("mailto:{email}");
-        let contacts = vec![contact_mailto.as_str()];
-
-        let (account, credentials) = Account::builder()
-            .map_err(acme_error_to_string)?
-            .create(
-                &NewAccount {
-                    contact: &contacts,
-                    terms_of_service_agreed: true,
-                    only_return_existing: false,
-                },
-                self.config.acme_directory_url.clone(),
-                None,
-            )
-            .await
-            .map_err(acme_error_to_string)?;
+        let (account, account_credentials_json) = self
+            .load_or_create_account(fallback_contact_email, shared_account_credentials_json)
+            .await?;
 
         let identifiers = vec![Identifier::Dns(domain.to_owned())];
         let mut order = account
@@ -64,8 +52,6 @@ impl AcmeService {
             .map_err(acme_error_to_string)?;
 
         let order_url = order.url().to_owned();
-        let account_credentials_json = serde_json::to_string(&credentials)
-            .map_err(|err| format!("erro ao serializar credenciais da conta ACME: {err}"))?;
 
         let mut dns_records = Vec::new();
         let mut authorizations = order.authorizations();
@@ -102,6 +88,55 @@ impl AcmeService {
             order_url,
             dns_records,
         })
+    }
+
+    async fn load_or_create_account(
+        &self,
+        fallback_contact_email: &str,
+        shared_account_credentials_json: Option<&str>,
+    ) -> Result<(Account, String), String> {
+        if let Some(credentials_json) = shared_account_credentials_json {
+            let credentials_json = credentials_json.trim();
+            if !credentials_json.is_empty() {
+                let account_credentials: AccountCredentials =
+                    serde_json::from_str(credentials_json).map_err(|err| {
+                        format!("credenciais ACME compartilhadas inválidas: {err}")
+                    })?;
+                let account = Account::builder()
+                    .map_err(acme_error_to_string)?
+                    .from_credentials(account_credentials)
+                    .await
+                    .map_err(acme_error_to_string)?;
+                return Ok((account, credentials_json.to_owned()));
+            }
+        }
+
+        let contact_email = self
+            .config
+            .acme_account_contact_email
+            .clone()
+            .unwrap_or_else(|| fallback_contact_email.to_owned());
+        let contact_mailto = format!("mailto:{contact_email}");
+        let contacts = vec![contact_mailto.as_str()];
+
+        let (account, credentials) = Account::builder()
+            .map_err(acme_error_to_string)?
+            .create(
+                &NewAccount {
+                    contact: &contacts,
+                    terms_of_service_agreed: true,
+                    only_return_existing: false,
+                },
+                self.config.acme_directory_url.clone(),
+                None,
+            )
+            .await
+            .map_err(acme_error_to_string)?;
+
+        let account_credentials_json = serde_json::to_string(&credentials)
+            .map_err(|err| format!("erro ao serializar credenciais da conta ACME: {err}"))?;
+
+        Ok((account, account_credentials_json))
     }
 
     pub async fn finalize_order(

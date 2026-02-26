@@ -369,11 +369,63 @@ async fn verify_email_code(
         ));
     }
 
+    let configured_acme_account_credentials = state
+        .config
+        .acme_account_credentials_json
+        .clone()
+        .filter(|raw| !raw.trim().is_empty());
+
+    let persisted_acme_account_credentials = if configured_acme_account_credentials.is_none() {
+        state
+            .sessions
+            .get_acme_account_credentials_json(&state.config.acme_directory_url)
+            .await
+            .map_err(|err| AppError::storage(err.to_string()))?
+    } else {
+        None
+    };
+
+    let has_persisted_acme_account = persisted_acme_account_credentials.is_some();
+    let shared_acme_account_credentials =
+        configured_acme_account_credentials.or(persisted_acme_account_credentials);
+
     let bootstrap = state
         .acme_service
-        .create_order(&session.domain, &session.email)
+        .create_order(
+            &session.domain,
+            &session.email,
+            shared_acme_account_credentials.as_deref(),
+        )
         .await
         .map_err(AppError::acme)?;
+
+    let has_env_acme_account_credentials = state
+        .config
+        .acme_account_credentials_json
+        .as_ref()
+        .is_some_and(|raw| !raw.trim().is_empty());
+    let should_persist_shared_acme_account =
+        has_env_acme_account_credentials || !has_persisted_acme_account;
+
+    if should_persist_shared_acme_account {
+        let account_contact_email = state.config.acme_account_contact_email.clone().or_else(|| {
+            if !has_persisted_acme_account && !has_env_acme_account_credentials {
+                Some(session.email.clone())
+            } else {
+                None
+            }
+        });
+
+        state
+            .sessions
+            .upsert_acme_account_credentials(
+                &state.config.acme_directory_url,
+                account_contact_email.as_deref(),
+                &bootstrap.account_credentials_json,
+            )
+            .await
+            .map_err(|err| AppError::storage(err.to_string()))?;
+    }
 
     session.mark_email_verified(now);
     session.status = SessionStatus::PendingDns;

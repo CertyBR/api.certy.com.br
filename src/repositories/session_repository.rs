@@ -194,6 +194,54 @@ impl SessionRepository {
         Ok(result.rows_affected() > 0)
     }
 
+    pub async fn get_acme_account_credentials_json(
+        &self,
+        directory_url: &str,
+    ) -> Result<Option<String>, RepositoryError> {
+        let credentials = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT account_credentials_json
+            FROM acme_accounts
+            WHERE directory_url = $1
+            "#,
+        )
+        .bind(directory_url)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(credentials)
+    }
+
+    pub async fn upsert_acme_account_credentials(
+        &self,
+        directory_url: &str,
+        contact_email: Option<&str>,
+        account_credentials_json: &str,
+    ) -> Result<(), RepositoryError> {
+        sqlx::query(
+            r#"
+            INSERT INTO acme_accounts (
+                directory_url,
+                contact_email,
+                account_credentials_json
+            )
+            VALUES ($1, $2, $3)
+            ON CONFLICT (directory_url)
+            DO UPDATE SET
+                contact_email = COALESCE(EXCLUDED.contact_email, acme_accounts.contact_email),
+                account_credentials_json = EXCLUDED.account_credentials_json,
+                updated_at = NOW()
+            "#,
+        )
+        .bind(directory_url)
+        .bind(contact_email)
+        .bind(account_credentials_json)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn insert_event(&self, event: &SessionAuditEvent) -> Result<(), RepositoryError> {
         sqlx::query(
             r#"

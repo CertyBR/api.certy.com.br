@@ -29,6 +29,8 @@ pub struct AppConfig {
     pub dns_check_resolver_url: String,
     pub dns_check_timeout: Duration,
     pub acme_directory_url: String,
+    pub acme_account_contact_email: Option<String>,
+    pub acme_account_credentials_json: Option<String>,
     pub session_ttl: Duration,
     pub poll_timeout: Duration,
     pub poll_initial_delay: Duration,
@@ -130,6 +132,14 @@ impl AppConfig {
                 .unwrap_or_else(|| "https://dns.google/resolve".to_owned()),
             dns_check_timeout: Duration::from_millis(env_u64("DNS_CHECK_TIMEOUT_MS", 4500)),
             acme_directory_url,
+            acme_account_contact_email: env::var("ACME_ACCOUNT_CONTACT_EMAIL")
+                .ok()
+                .map(|raw| raw.trim().to_owned())
+                .filter(|raw| !raw.is_empty()),
+            acme_account_credentials_json: env::var("ACME_ACCOUNT_CREDENTIALS_JSON")
+                .ok()
+                .map(|raw| raw.trim().to_owned())
+                .filter(|raw| !raw.is_empty()),
             session_ttl: Duration::from_secs(env_u64("SESSION_TTL_MINUTES", 60) * 60),
             poll_timeout: Duration::from_secs(env_u64("ACME_POLL_TIMEOUT_SECONDS", 120)),
             poll_initial_delay: Duration::from_millis(env_u64("ACME_POLL_INITIAL_DELAY_MS", 500)),
