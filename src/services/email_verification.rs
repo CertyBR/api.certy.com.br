@@ -111,6 +111,7 @@ mod tests {
             poll_timeout: Duration::from_secs(120),
             poll_initial_delay: Duration::from_millis(500),
             poll_backoff: 1.8,
+            turnstile_secret_key: None,
         }
     }
 

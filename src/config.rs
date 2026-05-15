@@ -35,6 +35,7 @@ pub struct AppConfig {
     pub poll_timeout: Duration,
     pub poll_initial_delay: Duration,
     pub poll_backoff: f32,
+    pub turnstile_secret_key: Option<String>,
 }
 
 impl AppConfig {
@@ -156,6 +157,10 @@ impl AppConfig {
             poll_timeout: Duration::from_secs(env_u64("ACME_POLL_TIMEOUT_SECONDS", 120)),
             poll_initial_delay: Duration::from_millis(env_u64("ACME_POLL_INITIAL_DELAY_MS", 500)),
             poll_backoff: env_f32("ACME_POLL_BACKOFF", 1.8),
+            turnstile_secret_key: env::var("TURNSTILE_SECRET_KEY")
+                .ok()
+                .map(|raw| raw.trim().to_owned())
+                .filter(|raw| !raw.is_empty()),
         }
     }
 }

@@ -86,6 +86,7 @@ pub struct DnsRecord {
 pub struct CreateSessionRequest {
     pub domain: String,
     pub email: String,
+    pub turnstile_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

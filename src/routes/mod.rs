@@ -1,3 +1,4 @@
+pub mod cert_check;
 pub mod certificates;
 pub mod health;
 
@@ -10,6 +11,9 @@ use crate::state::AppState;
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .merge(health::router())
-        .nest("/api/v1/certificates", certificates::router())
+        .nest(
+            "/api/v1/certificates",
+            certificates::router().merge(cert_check::router()),
+        )
         .with_state(state)
 }

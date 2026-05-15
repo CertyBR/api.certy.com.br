@@ -51,6 +51,17 @@ async fn create_session(
 
     let domain = normalize_domain(&payload.domain)?;
     let email = validate_email(&payload.email)?;
+
+    if let Some(secret) = state.config.turnstile_secret_key.as_deref() {
+        let token = payload.turnstile_token.as_deref().unwrap_or("");
+        if token.is_empty() {
+            return Err(AppError::validation(
+                "Por favor, complete o desafio de segurança.",
+            ));
+        }
+        verify_turnstile(secret, token, client_ip.as_deref()).await?;
+    }
+
     state
         .email_validation_service
         .validate_email(&email)
@@ -913,4 +924,35 @@ fn format_compact_duration(duration: Duration) -> String {
     let minutes = total_seconds / 60;
     let seconds = total_seconds % 60;
     format!("{minutes}m {seconds:02}s")
+}
+
+async fn verify_turnstile(secret: &str, token: &str, ip: Option<&str>) -> AppResult<()> {
+    #[derive(serde::Deserialize)]
+    struct TurnstileResp {
+        success: bool,
+    }
+
+    let mut params = vec![("secret", secret), ("response", token)];
+    if let Some(addr) = ip {
+        params.push(("remoteip", addr));
+    }
+
+    let resp = reqwest::Client::new()
+        .post("https://challenges.cloudflare.com/turnstile/v0/siteverify")
+        .form(&params)
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| AppError::upstream(format!("Erro ao verificar desafio de segurança: {e}")))?
+        .json::<TurnstileResp>()
+        .await
+        .map_err(|e| AppError::upstream(format!("Resposta inválida do Turnstile: {e}")))?;
+
+    if resp.success {
+        Ok(())
+    } else {
+        Err(AppError::validation(
+            "Desafio de segurança inválido ou expirado. Tente novamente.",
+        ))
+    }
 }
