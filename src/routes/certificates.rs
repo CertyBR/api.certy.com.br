@@ -183,16 +183,15 @@ async fn resend_verification_code(
         ));
     }
 
-    if let Some(last_sent_at) = session.email_verification_last_sent_at {
-        if let Ok(elapsed) = now.duration_since(last_sent_at) {
-            if elapsed < state.config.email_verification_resend_interval {
-                let remaining = state.config.email_verification_resend_interval - elapsed;
-                return Err(AppError::conflict(format!(
-                    "Aguarde {} para reenviar outro código.",
-                    format_compact_duration(remaining)
-                )));
-            }
-        }
+    if let Some(last_sent_at) = session.email_verification_last_sent_at
+        && let Ok(elapsed) = now.duration_since(last_sent_at)
+        && elapsed < state.config.email_verification_resend_interval
+    {
+        let remaining = state.config.email_verification_resend_interval - elapsed;
+        return Err(AppError::conflict(format!(
+            "Aguarde {} para reenviar outro código.",
+            format_compact_duration(remaining)
+        )));
     }
 
     let code = state.email_verification_service.generate_code();
