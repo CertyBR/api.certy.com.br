@@ -339,3 +339,129 @@ async fn check_certificate(
         active_ct_certs: 0,
     }))
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rcgen::{CertificateParams, KeyPair};
+
+    // Generate a self-signed DER cert with given CN and SAN DNS names.
+    fn make_cert_der(cn: &str, sans: &[&str]) -> Vec<u8> {
+        let key_pair = KeyPair::generate().expect("keygen");
+        let mut params = CertificateParams::new(
+            sans.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        )
+        .expect("params");
+        params.distinguished_name.push(rcgen::DnType::CommonName, cn.to_owned());
+        params
+            .self_signed(&key_pair)
+            .expect("sign")
+            .der()
+            .to_vec()
+    }
+
+    // ── is_private_host ──────────────────────────────────────────────────────
+
+    #[test]
+    fn private_hosts_are_blocked() {
+        let cases = [
+            "localhost",
+            "127.0.0.1",
+            "127.0.0.2",
+            "10.0.0.1",
+            "10.255.255.255",
+            "192.168.0.1",
+            "192.168.100.200",
+            "172.16.0.1",
+            "172.20.0.1",
+            "172.31.255.255",
+            "0.0.0.0",
+            "foo.local",
+            "app.internal",
+            "service.localhost",
+        ];
+        for host in cases {
+            assert!(is_private_host(host), "expected {host} to be private");
+        }
+    }
+
+    #[test]
+    fn public_hosts_are_not_blocked() {
+        let cases = [
+            "example.com",
+            "google.com",
+            "8.8.8.8",
+            "172.15.0.1",  // just below RFC-1918 block
+            "172.32.0.1",  // just above RFC-1918 block
+            "1.1.1.1",
+            "certy.com.br",
+        ];
+        for host in cases {
+            assert!(!is_private_host(host), "expected {host} to be public");
+        }
+    }
+
+    // ── parse_cert_der ───────────────────────────────────────────────────────
+
+    #[test]
+    fn parses_standard_cert() {
+        let der = make_cert_der("example.com", &["example.com", "www.example.com"]);
+        let info = parse_cert_der(&der).expect("should parse");
+
+        assert_eq!(info.common_name, "example.com");
+        assert!(info.sans.contains(&"example.com".to_owned()));
+        assert!(info.sans.contains(&"www.example.com".to_owned()));
+        assert_eq!(info.sans.len(), 2);
+        assert!(!info.is_wildcard);
+        assert!(!info.is_expired);
+        assert!(info.days_remaining > 0);
+        assert!(!info.serial.is_empty());
+    }
+
+    #[test]
+    fn detects_wildcard_cert() {
+        let der = make_cert_der("*.example.com", &["*.example.com", "example.com"]);
+        let info = parse_cert_der(&der).expect("should parse");
+        assert!(info.is_wildcard);
+    }
+
+    #[test]
+    fn single_san_matches_cn_fallback() {
+        // rcgen puts the CN in the SANs automatically, so we just verify
+        // the cert has at least one SAN when parsed.
+        let der = make_cert_der("single.example.com", &["single.example.com"]);
+        let info = parse_cert_der(&der).expect("should parse");
+        assert!(!info.sans.is_empty());
+    }
+
+    #[test]
+    fn serial_is_formatted_as_colon_hex() {
+        let der = make_cert_der("example.com", &["example.com"]);
+        let info = parse_cert_der(&der).expect("should parse");
+        // Serial must be non-empty colon-separated uppercase hex pairs.
+        assert!(!info.serial.is_empty());
+        for part in info.serial.split(':') {
+            assert_eq!(part.len(), 2, "each octet must be two hex chars: {part}");
+            assert!(part.chars().all(|c| c.is_ascii_hexdigit()), "non-hex char in {part}");
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_der() {
+        assert!(parse_cert_der(&[0xDE, 0xAD, 0xBE, 0xEF]).is_none());
+        assert!(parse_cert_der(&[]).is_none());
+        assert!(parse_cert_der(b"not a certificate").is_none());
+    }
+
+    #[test]
+    fn multi_san_cert_has_all_domains() {
+        let sans = ["a.example.com", "b.example.com", "c.example.com", "d.example.com"];
+        let der = make_cert_der("a.example.com", &sans);
+        let info = parse_cert_der(&der).expect("should parse");
+        for san in &sans {
+            assert!(info.sans.contains(&san.to_string()), "missing SAN {san}");
+        }
+    }
+}

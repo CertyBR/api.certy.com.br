@@ -20,7 +20,10 @@ sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "chr
 thiserror = "2.0.17"
 tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "sync", "time"] }
 tokio-rustls = "0.26"
-x509-parser = "0.16"
 tower-http = { version = "0.6.8", features = ["cors", "trace"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+x509-parser = "0.16"
+
+[dev-dependencies]
+rcgen = "0.14"
