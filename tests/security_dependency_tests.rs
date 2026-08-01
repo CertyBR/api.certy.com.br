@@ -26,6 +26,18 @@ fn lettre_boring_tls_feature_is_not_enabled() {
     );
 }
 
+#[test]
+fn quinn_proto_version_is_not_vulnerable_to_out_of_order_stream_reassembly_exhaustion() {
+    let lockfile = std::fs::read_to_string(lockfile_path()).expect("Cargo.lock must exist");
+    let version =
+        find_locked_package_version(&lockfile, "quinn-proto").expect("quinn-proto must be present in Cargo.lock");
+
+    assert!(
+        compare_semver(version, "0.11.15") != Ordering::Less,
+        "quinn-proto {version} is vulnerable to RUSTSEC-2026-0185; update to >= 0.11.15"
+    );
+}
+
 fn manifest_path() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")
 }
