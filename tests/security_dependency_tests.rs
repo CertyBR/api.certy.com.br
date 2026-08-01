@@ -38,6 +38,18 @@ fn quinn_proto_version_is_not_vulnerable_to_out_of_order_stream_reassembly_exhau
     );
 }
 
+#[test]
+fn aws_lc_sys_version_is_not_vulnerable_to_certificate_or_signature_validation_bypasses() {
+    let lockfile = std::fs::read_to_string(lockfile_path()).expect("Cargo.lock must exist");
+    let version =
+        find_locked_package_version(&lockfile, "aws-lc-sys").expect("aws-lc-sys must be present in Cargo.lock");
+
+    assert!(
+        compare_semver(version, "0.39.0") != Ordering::Less,
+        "aws-lc-sys {version} is vulnerable to AWS-LC validation bypasses and AES-CCM timing issues; update to >= 0.39.0"
+    );
+}
+
 fn manifest_path() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")
 }
