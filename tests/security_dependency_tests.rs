@@ -50,6 +50,18 @@ fn aws_lc_sys_version_is_not_vulnerable_to_certificate_or_signature_validation_b
     );
 }
 
+#[test]
+fn rustls_webpki_version_is_not_vulnerable_to_crl_parsing_or_distribution_point_bugs() {
+    let lockfile = std::fs::read_to_string(lockfile_path()).expect("Cargo.lock must exist");
+    let version =
+        find_locked_package_version(&lockfile, "rustls-webpki").expect("rustls-webpki must be present in Cargo.lock");
+
+    assert!(
+        compare_semver(version, "0.103.13") != Ordering::Less,
+        "rustls-webpki {version} is vulnerable to CRL parsing and distribution point validation issues; update to >= 0.103.13"
+    );
+}
+
 fn manifest_path() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")
 }
