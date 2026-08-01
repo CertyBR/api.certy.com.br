@@ -62,6 +62,38 @@ fn rustls_webpki_version_is_not_vulnerable_to_crl_parsing_or_distribution_point_
     );
 }
 
+#[test]
+fn event_listener_version_is_not_vulnerable_to_stack_slot_send_unsoundness() {
+    let lockfile = std::fs::read_to_string(lockfile_path()).expect("Cargo.lock must exist");
+    let version = find_locked_package_version(&lockfile, "event-listener")
+        .expect("event-listener must be present in Cargo.lock");
+
+    assert!(
+        compare_semver(version, "5.4.2") != Ordering::Less,
+        "event-listener {version} is vulnerable to RUSTSEC-2026-0221; update to >= 5.4.2"
+    );
+}
+
+#[test]
+fn rand_0_9_2_is_not_present_in_the_dependency_lockfile() {
+    let lockfile = std::fs::read_to_string(lockfile_path()).expect("Cargo.lock must exist");
+
+    assert!(
+        !find_locked_package_versions(&lockfile, "rand").contains(&"0.9.2"),
+        "rand 0.9.2 must not be present in Cargo.lock because it is affected by RUSTSEC-2026-0097"
+    );
+}
+
+#[test]
+fn spin_version_is_not_yanked() {
+    let lockfile = std::fs::read_to_string(lockfile_path()).expect("Cargo.lock must exist");
+
+    assert!(
+        !find_locked_package_versions(&lockfile, "spin").contains(&"0.9.8"),
+        "spin 0.9.8 must not be present in Cargo.lock because it is yanked"
+    );
+}
+
 fn manifest_path() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")
 }
@@ -71,10 +103,16 @@ fn lockfile_path() -> std::path::PathBuf {
 }
 
 fn find_locked_package_version<'a>(lockfile: &'a str, package_name: &str) -> Option<&'a str> {
-    lockfile.split("[[package]]").find_map(|package| {
+    find_locked_package_versions(lockfile, package_name)
+        .into_iter()
+        .next()
+}
+
+fn find_locked_package_versions<'a>(lockfile: &'a str, package_name: &str) -> Vec<&'a str> {
+    lockfile.split("[[package]]").filter_map(|package| {
         let name = find_quoted_value(package, "name")?;
         (name == package_name).then(|| find_quoted_value(package, "version"))?
-    })
+    }).collect()
 }
 
 fn find_quoted_value<'a>(package: &'a str, key: &str) -> Option<&'a str> {
